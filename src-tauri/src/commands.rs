@@ -651,7 +651,7 @@ fn models_root_at(base: &Path) -> Option<PathBuf> {
 
 /// The chosen models folder for this app, when set and reachable.
 pub(crate) fn models_root(app: &tauri::AppHandle) -> Option<PathBuf> {
-    models_root_at(&app.path().app_data_dir().ok()?)
+    models_root_at(&crate::portable::data_dir(app))
 }
 
 /// Where new models are written — downloaded, imported, or created: the
@@ -668,7 +668,7 @@ pub(crate) fn models_write_dir(app: &tauri::AppHandle) -> Result<PathBuf, String
     if let Some(root) = models_root(app) {
         return Ok(root);
     }
-    let data = app.path().app_data_dir().map_err(|e| e.to_string())?.join("models");
+    let data = crate::portable::data_dir(app).join("models");
     Ok(write_dir_for(model_dirs(app), data))
 }
 
@@ -691,7 +691,7 @@ fn write_dir_for(roots: Vec<PathBuf>, data: PathBuf) -> PathBuf {
 /// folder that is not there right now (a disk not plugged in) — the weights
 /// would land on the system drive, in a folder the user never picked.
 pub(crate) fn models_download_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let base = crate::portable::data_dir(app);
     if let Some(chosen) = std::fs::read_to_string(base.join(MODELS_ROOT_FILE))
         .ok()
         .map(|t| t.trim().to_string())
@@ -731,9 +731,7 @@ pub(crate) fn model_dirs(app: &tauri::AppHandle) -> Vec<PathBuf> {
             defaults.push(parent.join("models"));
         }
     }
-    if let Ok(data) = app.path().app_data_dir() {
-        defaults.push(data.join("models"));
-    }
+    defaults.push(crate::portable::data_dir(app).join("models"));
     if let Ok(res) = app.path().resource_dir() {
         defaults.push(res.join("models"));
     }
@@ -785,19 +783,13 @@ fn loose_main_ggufs(dir: &std::path::Path) -> Vec<PathBuf> {
 /// marker is written silently on their first launch, and silent migration
 /// takes over from then on.
 pub fn migrate_or_prompt_models(app: &tauri::AppHandle) {
-    let marker = app
-        .path()
-        .app_data_dir()
-        .ok()
-        .map(|d| d.join("models-migrate-prompted"));
+    let marker = crate::portable::data_dir(app).join("models-migrate-prompted");
 
-    // Already past the one-time gate (or no app-data dir) → keep the existing
-    // silent behavior.
-    if marker.as_ref().is_none_or(|m| m.exists()) {
+    // Already past the one-time gate → keep the existing silent behavior.
+    if marker.exists() {
         migrate_models_layout(app);
         return;
     }
-    let marker = marker.unwrap();
 
     let loose: usize = model_dirs(app).iter().map(|d| loose_main_ggufs(d).len()).sum();
     // Record that this build has done its one-time check, whatever happens next
@@ -997,7 +989,6 @@ pub(crate) fn open_default(target: &str) -> Result<(), String> {
 /// at it for good: a message keeps the path of its picture. Returns the path.
 #[tauri::command]
 pub fn save_pasted_file(app: tauri::AppHandle, name: String, data: String) -> Result<String, String> {
-    use tauri::Manager;
     const MAX: usize = 100 * 1024 * 1024;
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(data.as_bytes())
@@ -1005,11 +996,7 @@ pub fn save_pasted_file(app: tauri::AppHandle, name: String, data: String) -> Re
     if bytes.is_empty() || bytes.len() > MAX {
         return Err(trf!("粘贴的文件为空或超过 100 MB", "the pasted file is empty or over 100 MB"));
     }
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("attachments");
+    let dir = crate::portable::data_dir(&app).join("attachments");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let path = dir.join(pasted_name(&name, &bytes, chrono::Local::now()));
     std::fs::write(&path, &bytes).map_err(|e| trf!("无法保存粘贴的文件:{e}", "could not save the pasted file: {e}"))?;
@@ -1155,7 +1142,7 @@ pub struct ModelsRootInfo {
 
 #[tauri::command]
 pub fn get_models_root(app: tauri::AppHandle) -> Result<ModelsRootInfo, String> {
-    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let base = crate::portable::data_dir(&app);
     let custom = std::fs::read_to_string(base.join(MODELS_ROOT_FILE))
         .ok()
         .map(|t| t.trim().to_string())
@@ -1232,7 +1219,7 @@ pub fn set_models_root(
     app: tauri::AppHandle,
     path: Option<String>,
 ) -> Result<ModelsRootChange, String> {
-    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let base = crate::portable::data_dir(&app);
     std::fs::create_dir_all(&base).map_err(|e| e.to_string())?;
     let marker = base.join(MODELS_ROOT_FILE);
     // Counted through the real listing rather than guessed at, before and
@@ -1261,7 +1248,7 @@ pub fn set_models_root(
 /// file manager so users can back it up or inspect what's stored on disk.
 #[tauri::command]
 pub fn open_data_dir(app: tauri::AppHandle) -> Result<String, String> {
-    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let dir = crate::portable::data_dir(&app);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let path = dir.to_string_lossy().to_string();
     open_default(&path)?;
@@ -1285,11 +1272,7 @@ pub fn open_html_report(
         "canvas" => "canvas",
         _ => "reports",
     };
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join(subdir);
+    let dir = crate::portable::data_dir(&app).join(subdir);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     // Name the file after its content, not the clock: opening the same canvas
     // twice used to leave a second timestamped copy in the folder every time.
@@ -1313,11 +1296,7 @@ pub fn open_html_report(
 /// meant every iteration was gone after an app restart (owner report) — the
 /// chat message only carries v1.
 fn canvas_sessions_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("canvas-sessions");
+    let dir = crate::portable::data_dir(app).join("canvas-sessions");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(dir)
 }
@@ -2090,11 +2069,7 @@ pub struct SynthAudio {
 }
 
 fn voice_models_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    Ok(app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("voice-models"))
+    Ok(crate::portable::data_dir(app).join("voice-models"))
 }
 
 /// Stop a voice model download (the × on its progress bar).

@@ -14,7 +14,6 @@ use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
 use tauri::ipc::Channel;
-use tauri::Manager;
 
 const UA: &str = "Chaty model downloader";
 
@@ -277,9 +276,8 @@ pub(crate) async fn xet_fallback_download(
 /// Remove leftovers of cancelled/crashed xet fallback downloads. Called once
 /// at startup, when no download can be in flight.
 pub fn clear_stale_xet_tmp(app: &tauri::AppHandle) {
-    if let Ok(dir) = app.path().app_data_dir() {
-        let _ = std::fs::remove_dir_all(dir.join("xet-tmp"));
-    }
+    let dir = crate::portable::data_dir(app);
+    let _ = std::fs::remove_dir_all(dir.join("xet-tmp"));
 }
 
 /// Full recursive file listing of a HuggingFace repo: `(path, size)` pairs.
@@ -730,7 +728,7 @@ pub async fn hf_search(
     // models; "image" and "music" select their studios.
     task: Option<String>,
 ) -> Result<HfShelf, String> {
-    let shelves = app.path().app_data_dir().ok().map(|d| d.join(SHELVES_FILE));
+    let shelves = Some(crate::portable::data_dir(&app).join(SHELVES_FILE));
     search_shelf(shelves.as_deref(), &query, &format, &sort, limit, endpoint.as_deref(), task.as_deref()).await
 }
 
@@ -1526,7 +1524,7 @@ pub async fn download_mlx_repo(
     endpoint: Option<String>,
     on_progress: Channel<DownloadProgress>,
 ) -> Result<String, String> {
-    let root = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let root = crate::portable::data_dir(&app);
     let models = crate::commands::models_download_dir(&app)?;
     download_mlx_repo_inner(&root, &models, repo, endpoint, on_progress).await
 }
@@ -1697,7 +1695,7 @@ pub async fn download_model(
     dir: Option<String>,
     on_progress: Channel<DownloadProgress>,
 ) -> Result<(), String> {
-    let root = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let root = crate::portable::data_dir(&app);
     // Where the weights land is the user's choice (issue #12); `root` stays
     // app-data, which is where the xet fallback wants its scratch space.
     let (models, subdir) = match dir.as_deref().map(str::trim).filter(|d| !d.is_empty()) {

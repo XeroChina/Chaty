@@ -719,7 +719,7 @@ fn rand_u16() -> u16 {
 /// Where pieces are written when no folder is chosen: app-data/music, one
 /// folder per day.
 fn default_output_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    Ok(app.path().app_data_dir().map_err(|e| e.to_string())?.join("music"))
+    Ok(crate::portable::data_dir(app).join("music"))
 }
 
 #[tauri::command]

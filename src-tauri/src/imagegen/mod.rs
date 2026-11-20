@@ -334,7 +334,7 @@ pub async fn image_model_probe(
 /// Where pictures are written when no folder is chosen: app-data/images,
 /// one folder per day.
 fn default_output_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    Ok(app.path().app_data_dir().map_err(|e| e.to_string())?.join("images"))
+    Ok(crate::portable::data_dir(app).join("images"))
 }
 
 #[tauri::command]

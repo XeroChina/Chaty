@@ -35,9 +35,14 @@ const MAX_FILE_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_TOTAL_BYTES: u64 = 20 * 1024 * 1024;
 const UA: &str = "chaty-skill-sync (+https://github.com/Fangyuan025/Chaty)";
 
-/// App-data root shared with the Tauri identifier's own convention, reachable
-/// without an AppHandle (the sync thread and chaty-headless both need it).
+/// App-data root shared with the Tauri identifier's own convention (or the
+/// portable `Data\` folder), reachable without an AppHandle (the sync thread
+/// and chaty-headless both need it).
 fn data_dir() -> PathBuf {
+    // A portable layout keeps every user file under `Data\` beside the program.
+    if let Some(dir) = crate::portable::portable_data_dir() {
+        return dir;
+    }
     #[cfg(target_os = "macos")]
     {
         dirs_home().join("Library/Application Support/com.chaty.desktop")

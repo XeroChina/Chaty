@@ -20,7 +20,6 @@ use crate::inference::llama_sidecar::EmbedClient;
 use rusqlite::{params, Connection};
 use serde::Serialize;
 use tauri::ipc::Channel;
-use tauri::Manager;
 
 const EMBED_FILE: &str = "bge-m3-Q8_0.gguf";
 const EMBED_URLS: &[&str] = &[
@@ -52,12 +51,7 @@ pub fn embed_unload() {
 }
 
 fn embed_model_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    Ok(app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("rag")
-        .join(EMBED_FILE))
+    Ok(crate::portable::data_dir(app).join("rag").join(EMBED_FILE))
 }
 
 /// Embed a batch of texts, lazily starting the embedder on first use. One
@@ -90,11 +84,7 @@ fn with_db<T>(
 ) -> Result<T, String> {
     let mut guard = DB.lock().unwrap();
     if guard.is_none() {
-        let dir = app
-            .path()
-            .app_data_dir()
-            .map_err(|e| e.to_string())?
-            .join("rag");
+        let dir = crate::portable::data_dir(app).join("rag");
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
         let conn = Connection::open(dir.join("rag.db")).map_err(|e| e.to_string())?;
         conn.execute_batch(
@@ -984,11 +974,7 @@ pub async fn rag_add_document(
         let vision_text = vision_caption(&app, &path, &on_progress, CAPTION_PROMPT, 480, 0.0).await;
         // (2) OCR text.
         let _ = on_progress.send(RagProgress { phase: "extract", frac: 0.0 });
-        let dir = app
-            .path()
-            .app_data_dir()
-            .map_err(|e| e.to_string())?
-            .join("ocr-models");
+        let dir = crate::portable::data_dir(&app).join("ocr-models");
         let ocr = crate::ocr::ocr_image(dir, path.clone())
             .await
             .map(|t| t.trim().to_string())
@@ -1538,7 +1524,7 @@ pub async fn rag_download_model(
                 // CDN-blocked network (cas-bridge 403): retry this URL over xet.
                 if e.status() == Some(reqwest::StatusCode::FORBIDDEN) {
                     if let Some((repo, revision, path)) = crate::download::parse_hf_resolve_url(url) {
-                        let tmp_root = app.path().app_data_dir().map_err(|e| e.to_string())?;
+                        let tmp_root = crate::portable::data_dir(&app);
                         let progress = on_progress.clone();
                         let result = crate::download::xet_fallback_download(
                             &repo,

@@ -1897,17 +1897,14 @@ pub fn data_stats(app: tauri::AppHandle, db: State<'_, Db>) -> Result<DataStats,
     drop(conn);
     // The database is three files in WAL mode, and the log routinely outgrows
     // the main one — reporting only `chaty.db` understated what it occupies.
-    let db_bytes = tauri::Manager::path(&app)
-        .app_data_dir()
-        .ok()
-        .map(|d| {
-            ["chaty.db", "chaty.db-wal", "chaty.db-shm"]
-                .iter()
-                .filter_map(|f| std::fs::metadata(d.join(f)).ok())
-                .map(|m| m.len())
-                .sum()
-        })
-        .unwrap_or(0);
+    let db_bytes = {
+        let d = crate::portable::data_dir(&app);
+        ["chaty.db", "chaty.db-wal", "chaty.db-shm"]
+            .iter()
+            .filter_map(|f| std::fs::metadata(d.join(f)).ok())
+            .map(|m| m.len())
+            .sum()
+    };
     Ok(DataStats { conversations, messages, code_sessions, images, music, db_bytes })
 }
 

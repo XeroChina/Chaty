@@ -8,10 +8,14 @@
 use std::io::Write;
 use std::path::PathBuf;
 
-/// The app's data dir (same location Tauri uses for the identifier), without
-/// needing an AppHandle — engine-level code (llama guard, panic hook) runs
-/// before/outside Tauri state.
+/// The app's data dir (Tauri's app-data location, or `Data\` in a portable
+/// layout), without needing an AppHandle — engine-level code (llama guard,
+/// panic hook) runs before/outside Tauri state.
 pub(crate) fn chaty_data_dir() -> PathBuf {
+    // A portable layout keeps every user file under `Data\` beside the program.
+    if let Some(dir) = crate::portable::portable_data_dir() {
+        return dir;
+    }
     #[cfg(windows)]
     let base = std::env::var_os("APPDATA").map(PathBuf::from);
     #[cfg(target_os = "macos")]

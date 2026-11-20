@@ -33,6 +33,12 @@ path = "src/bin/chaty-headless.rs"
 name = "chaty-llama"
 path = "src/bin/chaty-llama.rs"
 
+# The portable launcher: the `chaty.exe` in the portable root, which starts
+# `Program\chaty.exe` beside it. Only the Windows release packages it.
+[[bin]]
+name = "chaty-launcher"
+path = "src/bin/chaty-launcher.rs"
+
 [features]
 # GPU offload. On by default; build with `--no-default-features` for a pureâ€‘CPU
 # build (no Vulkan SDK needed on Windows/Linux). The backend is target-

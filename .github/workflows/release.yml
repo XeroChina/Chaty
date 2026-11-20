@@ -239,6 +239,44 @@ jobs:
           path: C:\ct\release\bundle\inno\*.exe
           if-no-files-found: error
 
+      # The portable layout: a root chaty.exe that starts Program\chaty.exe, a
+      # `portable` marker beside them that turns portable mode on, and Data\ for
+      # every user file (src-tauri/src/portable.rs reads all three). Same
+      # program files the installer gets, arranged differently.
+      - name: Build launcher and pack the portable zip
+        shell: pwsh
+        working-directory: src-tauri
+        run: |
+          cargo build --release --bin chaty-launcher
+          if ($LASTEXITCODE -ne 0) { throw "launcher build failed" }
+          $ver = "${env:GITHUB_REF_NAME}".TrimStart("v")
+          $stage = Join-Path $env:RUNNER_TEMP "chaty-portable"
+          Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force "$stage\Program", "$stage\Data" | Out-Null
+          $files = @(
+            "chaty.exe", "chaty-llama.exe", "chaty-sd.exe", "chaty-audio.exe",
+            "onnxruntime.dll", "onnxruntime_providers_shared.dll",
+            "sherpa-onnx-c-api.dll", "sherpa-onnx-cxx-api.dll", "cargs.dll"
+          )
+          foreach ($f in $files) {
+            if (-not (Test-Path "C:\ct\release\$f")) { throw "missing $f" }
+            Copy-Item "C:\ct\release\$f" "$stage\Program"
+          }
+          # Normally the GPU driver provides this; bare machines get the loader.
+          if (Test-Path C:\ct\release\vulkan-1.dll) {
+            Copy-Item C:\ct\release\vulkan-1.dll "$stage\Program"
+          }
+          Copy-Item C:\ct\release\chaty-launcher.exe "$stage\chaty.exe"
+          # Not empty: a named file with a line in it survives every extractor.
+          Set-Content -Path "$stage\portable" -Value "Chaty portable layout: Program is the app, Data is its files."
+          Compress-Archive -Path "$stage\*" `
+            -DestinationPath "C:\ct\release\bundle\Chaty_${ver}_x64-portable.zip" -Force
+      - uses: actions/upload-artifact@v5
+        with:
+          name: windows-portable
+          path: C:\ct\release\bundle\*portable.zip
+          if-no-files-found: error
+
   build-linux:
     needs: check-version
     # Ubuntu 22.04: Tauri v2 needs webkit2gtk-4.1, and building against the
@@ -335,7 +373,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v5
         # The installers only: chaty-mlx's own artifact is build-macos's input.
-        with: { pattern: "{macos-dmg,windows-installer,linux-appimage}", merge-multiple: true, path: dist }
+        with: { pattern: "{macos-dmg,windows-installer,linux-appimage,windows-portable}", merge-multiple: true, path: dist }
       - name: Create GitHub Release with both installers
         uses: softprops/action-gh-release@v2
         with:
@@ -415,6 +453,7 @@ jobs:
             | Platform | File |
             |---|---|
             | **Windows x64** | `Chaty_*_x64-setup.exe` — per-user installer, no admin |
+            | **Windows x64 (portable)** | `Chaty_*_x64-portable.zip` — unzip anywhere and run `chaty.exe`; settings, chats and models stay in its `Data` folder |
             | **macOS (Apple Silicon)** | `Chaty_*_aarch64.dmg` |
             | **Linux x64 (beta)** | `Chaty_*_amd64.AppImage` — `chmod +x` and run |
 

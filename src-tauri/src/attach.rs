@@ -4,7 +4,6 @@
 use std::path::Path;
 
 use serde::Serialize;
-use tauri::Manager;
 
 /// Hard cap on returned characters (the model's context is the real limit).
 const MAX_CHARS: usize = 16000;
@@ -49,11 +48,7 @@ pub async fn read_attachment(app: tauri::AppHandle, path: String) -> Result<Atta
         "xlsx" => ("xlsx".to_string(), crate::rag::extract_xlsx(&path)?),
         "pptx" => ("pptx".to_string(), crate::rag::extract_pptx(&path)?),
         "png" | "jpg" | "jpeg" | "webp" | "bmp" | "gif" => {
-            let dir = app
-                .path()
-                .app_data_dir()
-                .map_err(|e| e.to_string())?
-                .join("ocr-models");
+            let dir = crate::portable::data_dir(&app).join("ocr-models");
             let text = crate::ocr::ocr_image(dir, path.clone())
                 .await
                 .map_err(|e| trf!("OCR 失败：{e:#}", "OCR failed: {e:#}"))?;

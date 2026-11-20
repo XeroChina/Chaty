@@ -2358,9 +2358,8 @@ pub async fn browser_render_html(app: tauri::AppHandle, html: String) -> Result<
 /// vision models can additionally `view_image` the cached page images.
 #[tauri::command]
 pub async fn agent_read_doc(app: tauri::AppHandle, path: String) -> Result<String, String> {
-    use tauri::Manager as _;
     let abs = resolve(&path)?;
-    let models_dir = app.path().app_data_dir().ok().map(|d| d.join("ocr-models"));
+    let models_dir = Some(crate::portable::data_dir(&app).join("ocr-models"));
     read_doc_core(abs, models_dir).await
 }
 

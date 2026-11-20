@@ -166,6 +166,16 @@ async fn fetch_latest() -> anyhow::Result<UpdateInfo> {
 /// Check GitHub for a newer release (never errors out to the UI).
 #[tauri::command]
 pub async fn check_update() -> UpdateInfo {
+    // A portable copy is not replaced by an installer: the only asset the
+    // updater can fetch is the per-user setup, which would install a second
+    // Chaty beside this one. A portable user takes the new zip from the
+    // releases page and unpacks it in place.
+    if crate::portable::root().is_some() {
+        return UpdateInfo {
+            current: env!("CARGO_PKG_VERSION").to_string(),
+            ..Default::default()
+        };
+    }
     match fetch_latest().await {
         Ok(info) => info,
         Err(e) => {

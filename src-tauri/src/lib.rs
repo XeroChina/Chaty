@@ -27,6 +27,7 @@ pub mod search;
 pub mod pdfexport;
 mod scheme;
 pub mod portal;
+pub mod portable;
 pub mod skillsync;
 #[cfg(target_os = "macos")]
 mod smooth_wheel;
@@ -437,7 +438,7 @@ pub fn run() {
             }
 
             // ---- conversation database ----
-            let dir = app.path().app_data_dir()?;
+            let dir = crate::portable::data_dir(&app.handle());
             std::fs::create_dir_all(&dir)?;
             let db = store::init_db(&dir.join("chaty.db"))?;
             app.manage(db);
@@ -456,9 +457,8 @@ pub fn run() {
             agent::init_bg_history(&dir.join("chaty.db"));
 
             // ---- browser automation: persistent profile (logins survive) ----
-            if let Ok(data) = app.path().app_data_dir() {
-                browser::set_profile_dir(data.join("browser-profile"));
-            }
+            let data = crate::portable::data_dir(&app.handle());
+            browser::set_profile_dir(data.join("browser-profile"));
 
             // ---- models folder (drop-in GGUF hot-swap) ----
             commands::ensure_models_dir(app.handle());
