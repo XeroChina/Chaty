@@ -269,8 +269,9 @@ jobs:
           Copy-Item C:\ct\release\chaty-launcher.exe "$stage\chaty.exe"
           # Not empty: a named file with a line in it survives every extractor.
           Set-Content -Path "$stage\portable" -Value "Chaty portable layout: Program is the app, Data is its files."
-          Compress-Archive -Path "$stage\*" `
-            -DestinationPath "C:\ct\release\bundle\Chaty_${ver}_x64-portable.zip" -Force
+          # tar (bsdtar), not Compress-Archive: it keeps the empty Data folder
+          # the layout is built around, and it compresses the engines better.
+          tar.exe -a -c -f "C:\ct\release\bundle\Chaty_${ver}_x64-portable.zip" -C $stage .
       - uses: actions/upload-artifact@v5
         with:
           name: windows-portable
