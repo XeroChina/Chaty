@@ -28,18 +28,25 @@ pub fn root() -> Option<PathBuf> {
 /// `root` for a given executable path, split out so it can be tested without
 /// moving the real executable around.
 fn root_at(exe: &Path) -> Option<PathBuf> {
-    let dir = exe.parent()?;
-    let root = match dir.file_name().and_then(|n| n.to_str()) {
-        // `…\Chaty\Program\chaty.exe` — one level up is the portable root.
-        Some(name) if name.eq_ignore_ascii_case("Program") => dir.parent()?,
-        // `…\Chaty\chaty.exe`, or a program that happens to sit in its own
-        // portable root: the folder it is in.
-        _ => dir,
-    };
+    let root = layout_root(exe)?;
     if root.join("portable").is_file() {
-        Some(root.to_path_buf())
+        Some(root)
     } else {
         None
+    }
+}
+
+/// The folder a portable layout lives in: one level up from a `Program` folder,
+/// the program's own folder otherwise. No marker is looked at here, so the
+/// layout rules can be tested without touching the filesystem.
+fn layout_root(exe: &Path) -> Option<PathBuf> {
+    let dir = exe.parent()?;
+    match dir.file_name().and_then(|n| n.to_str()) {
+        // `…\Chaty\Program\chaty.exe` — one level up is the portable root.
+        Some(name) if name.eq_ignore_ascii_case("Program") => dir.parent().map(Path::to_path_buf),
+        // `…\Chaty\chaty.exe`, or a program that happens to sit in its own
+        // portable root: the folder it is in.
+        _ => Some(dir.to_path_buf()),
     }
 }
 
@@ -63,33 +70,25 @@ pub fn data_dir(app: &tauri::AppHandle) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::root_at;
+    use super::{layout_root, root_at};
     use std::path::Path;
 
     #[test]
     fn the_program_inside_program_finds_the_root_a_level_up() {
         let root = Path::new("D:/Apps/Chaty");
-        assert_eq!(
-            root_at(&root.join("Program").join("chaty.exe")).as_deref(),
-            Some(root)
-        );
+        assert_eq!(layout_root(&root.join("Program").join("chaty.exe")).as_deref(), Some(root));
         // A folder name of any case is the same folder on Windows.
-        assert_eq!(
-            root_at(&root.join("program").join("chaty.exe")).as_deref(),
-            Some(root)
-        );
+        assert_eq!(layout_root(&root.join("program").join("chaty.exe")).as_deref(), Some(root));
     }
 
     #[test]
     fn an_exe_in_the_root_finds_that_root() {
         let root = Path::new("D:/Apps/Chaty");
-        assert_eq!(root_at(&root.join("chaty.exe")).as_deref(), Some(root));
+        assert_eq!(layout_root(&root.join("chaty.exe")).as_deref(), Some(root));
     }
 
     #[test]
-    fn a_normal_install_has_no_portable_root() {
-        // No `portable` marker next to the exe: the layout is not portable, so
-        // the path is rejected even though it sits in a folder of its own.
+    fn only_a_layout_with_the_marker_is_portable() {
         let dir = std::env::temp_dir().join(format!("chaty-portable-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("Program")).unwrap();
