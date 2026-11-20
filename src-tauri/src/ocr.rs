@@ -9,8 +9,12 @@ use anyhow::{Context, Result};
 use ocrs::{ImageSource, OcrEngine, OcrEngineParams};
 use rten::Model;
 
-const DET_URL: &str = "https://ocrs-models.s3-accelerate.amazonaws.com/text-detection.rten";
-const REC_URL: &str = "https://ocrs-models.s3-accelerate.amazonaws.com/text-recognition.rten";
+// The ocrs models are published by their author on Hugging Face. The old
+// `ocrs-models.s3-accelerate.amazonaws.com` bucket was taken down (it answers
+// 403 AccessDenied since 2026-10), which left every first use of an image
+// stuck on a download that could never succeed.
+const DET_URL: &str = "https://huggingface.co/robertknight/ocrs/resolve/main/text-detection-ssfbcj81.rten";
+const REC_URL: &str = "https://huggingface.co/robertknight/ocrs/resolve/main/text-rec-checkpoint-s52qdbqt.rten";
 
 async fn ensure_models(dir: &Path) -> Result<(PathBuf, PathBuf)> {
     std::fs::create_dir_all(dir).context(trf!("无法创建模型文件夹", "could not create the models folder"))?;
