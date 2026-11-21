@@ -39,3 +39,5 @@ tools/runtime-sign/target/
 # Python bytecode debris (skill scripts run in place during validation)
 __pycache__/
 *.pyc
+.npm-cache-local/
+
