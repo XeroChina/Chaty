@@ -1,6 +1,6 @@
 [package]
 name = "chaty"
-version = "2.4.4"
+version = "2.4.5"
 # Two binaries live here (the app + the bench/headless tool server) — `cargo
 # run`, which `tauri dev` invokes, needs to know the app is the default.
 default-run = "chaty"
@@ -156,7 +156,10 @@ gtk = "0.18"
 
 # GPU VRAM detection (DXGI) for auto-tuning n_gpu_layers â€” cross-vendor on Windows.
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.61", features = [
+# Same major as wry 0.57 / tauri 2.12 use: two `windows` crates in the graph
+# would give every HWND and COM interface a type of its own, and the two could
+# not be passed to each other.
+windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_Globalization",
     "Win32_Graphics_Dxgi",
@@ -167,8 +170,9 @@ windows = { version = "0.61", features = [
     "Win32_UI_HiDpi",
     "Win32_UI_WindowsAndMessaging",
 ] }
-# A chat printed to PDF by WebView2 itself (src/pdfexport.rs): wry's own.
-webview2-com = "0.38"
+# A chat printed to PDF by WebView2 itself (src/pdfexport.rs): the same version
+# wry drives, so its COM types are the ones Tauri hands back.
+webview2-com = "0.39"
 # Windows code page number → encoding, for console output that is not UTF-8
 # (already in the tree through calamine).
 codepage = "0.1.2"
