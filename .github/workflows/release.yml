@@ -223,7 +223,10 @@ jobs:
 
             The first paste of an image reads its text with the ocrs models, which used to be
             downloaded from an S3 bucket that has since been taken down — every first paste failed
-            with a 403. They now come from the author's Hugging Face repository.
+            with a 403. They now come from the author's Hugging Face repository. Those models read
+            Latin script only, so a Chinese page came back as Latin-looking gibberish; Windows' own
+            OCR (`Windows.Media.Ocr`) now goes first and reads Chinese, falling back to the bundled
+            models where the system has no Chinese recognizer.
 
             ## Under the hood
 
