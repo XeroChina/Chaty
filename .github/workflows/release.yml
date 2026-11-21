@@ -1,14 +1,13 @@
-# Cross-platform release: one tag → one GitHub Release carrying BOTH the
-# Windows Inno installer (.exe) and the macOS disk image (.dmg).
+# Windows x64 release: one tag → one GitHub Release carrying the Inno Setup
+# installer (.exe) and the portable zip.
 #
 # The in-app updater (src-tauri/src/update.rs) reads the *latest* release and
-# picks the asset by platform extension, so keeping both installers on the same
-# release is what keeps cross-platform versions in sync.
+# picks the asset by platform extension.
 #
 # Flow:
 #   1. bump versions with scripts/bump-version.sh <x.y.z>
 #   2. commit, tag v<x.y.z>, push the tag
-#   3. this workflow builds both installers and publishes the release
+#   3. this workflow builds both Windows artifacts and publishes the release
 name: release
 
 on:
@@ -38,84 +37,6 @@ jobs:
           echo "tag=$TAG pkg=$PKG conf=$CONF cargo=$CARGO"
           [ "$TAG" = "$PKG" ] && [ "$TAG" = "$CONF" ] && [ "$TAG" = "$CARGO" ] \
             || { echo "::error::version mismatch — run scripts/bump-version.sh $TAG"; exit 1; }
-
-  # chaty-mlx on its own runner: mlx-swift's manifest declares Swift tools
-  # 6.3, which only Xcode 26.4+ reads, and macos-15 stops at 26.3. The app
-  # itself stays on macos-15; the sidecar and its resource bundles come over
-  # as an artifact.
-  build-mlx:
-    needs: check-version
-    runs-on: macos-26 # Apple Silicon, Xcode 26.6
-    steps:
-      - uses: actions/checkout@v5
-      - name: Build chaty-mlx
-        run: |
-          xcodebuild -version
-          xcodebuild -downloadComponent MetalToolchain
-          ./scripts/build-mlx-sidecar.sh
-      - uses: actions/upload-artifact@v5
-        with:
-          name: chaty-mlx
-          path: |
-            src-tauri/binaries/chaty-mlx-aarch64-apple-darwin
-            src-tauri/binaries/*.bundle
-          if-no-files-found: error
-
-  build-macos:
-    needs: [check-version, build-mlx]
-    # macos-15 (chaty-mlx comes from build-mlx). Building the app against the
-    # macOS 15 SDK is
-    # fine now — ggml's MTLResidencySet wired-memory balloon is disabled at
-    # runtime (GGML_METAL_NO_RESIDENCY=1 set on startup, lib.rs).
-    runs-on: macos-15 # Apple Silicon
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with: { node-version: 20, cache: npm }
-      - uses: dtolnay/rust-toolchain@1.99.1
-        with: { targets: aarch64-apple-darwin }
-      - uses: Swatinem/rust-cache@v2
-        # Don't cache target/: rust-cache prunes the ONNX Runtime dylib that
-        # sherpa-rs places in target/release/ while keeping its build script
-        # "fresh", so a cache-restored build fails with
-        # "Library not found: target/release/libonnxruntime.*.dylib".
-        with: { workspaces: src-tauri, cache-targets: false }
-      - run: npm ci
-      - name: MLX sidecar (chaty-mlx), built on macOS 26
-        uses: actions/download-artifact@v5
-        with: { name: chaty-mlx, path: src-tauri/binaries }
-      - run: chmod +x src-tauri/binaries/chaty-mlx-aarch64-apple-darwin
-      - name: Build image engine sidecar (chaty-sd, Metal)
-        # stable-diffusion.cpp in its own process (it carries its own ggml,
-        # which cannot share a binary with llama.cpp's). Staged into
-        # src-tauri/binaries/ for externalBin.
-        run: ./scripts/build-sd-sidecar.sh metal
-      - name: Build music engine sidecar (chaty-audio, Metal)
-        # audio.cpp in its own process, for the same reason as chaty-sd: its
-        # own ggml. The Metal library is embedded in the binary.
-        run: ./scripts/build-audio-sidecar.sh metal
-      - name: Build .app (Metal)
-        # Only the "app" bundle: Tauri's bundle_dmg.sh drives Finder via
-        # AppleScript, which fails on headless CI runners. The extra --config
-        # layer bundles the MLX, image and music sidecars (kept out of the base
-        # config so local `tauri dev` works without them). One layer naming all
-        # three: config layers merge arrays by replacing them.
-        run: npm run tauri build -- --bundles app --config src-tauri/tauri.mlx-sd.conf.json
-      - name: Bundle MLX resource bundles (metallib) + re-sign
-        run: ./scripts/bundle-mlx-resources.sh src-tauri/target/release/bundle/macos/Chaty.app
-      - name: Package .dmg (headless hdiutil)
-        run: |
-          VER="${GITHUB_REF_NAME#v}"
-          STAGE=$(mktemp -d)
-          cp -R src-tauri/target/release/bundle/macos/Chaty.app "$STAGE/"
-          ln -s /Applications "$STAGE/Applications"
-          hdiutil create -volname "Chaty" -srcfolder "$STAGE" -ov -format UDZO \
-            "Chaty_${VER}_aarch64.dmg"
-      - uses: actions/upload-artifact@v5
-        with:
-          name: macos-dmg
-          path: "*.dmg"
-          if-no-files-found: error
 
   build-windows:
     needs: check-version
@@ -278,104 +199,13 @@ jobs:
           path: C:\ct\release\bundle\*portable.zip
           if-no-files-found: error
 
-  build-linux:
-    needs: check-version
-    # Ubuntu 22.04: Tauri v2 needs webkit2gtk-4.1, and building against the
-    # OLDEST supported glibc is what makes the AppImage run on newer distros
-    # too (the reverse never works).
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with: { node-version: 20, cache: npm }
-      - uses: dtolnay/rust-toolchain@1.99.1
-      - uses: Swatinem/rust-cache@v2
-        # cache-targets: false for the same reason as build-macos: rust-cache
-        # prunes the sherpa-onnx/onnxruntime shared libs that sherpa-rs-sys'
-        # build script drops into target/release while keeping the script
-        # "fresh", so the SECOND release run (first with a warm cache) dies at
-        # link time with "unable to find library -lonnxruntime". Windows is
-        # naturally immune: CARGO_TARGET_DIR=C:\ct sits outside the cached
-        # workspace, so its target is never cached in the first place.
-        with: { workspaces: src-tauri, cache-targets: false }
-      - name: System deps (Tauri v2 + Vulkan for llama.cpp)
-        run: |
-          # glslc is NOT in Ubuntu 22.04's own archive (first Linux release
-          # run found out the hard way) — llama.cpp's Vulkan backend needs it
-          # to compile shaders, and LunarG's repo is where it lives.
-          wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc \
-            | sudo tee /etc/apt/trusted.gpg.d/lunarg.asc >/dev/null
-          sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list \
-            https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
-          # apt-get, tried again when the mirror cannot be reached.
-          apt() { for i in 1 2 3 4; do sudo apt-get -o Acquire::Retries=3 "$@" && return 0; echo "apt-get $1 failed (try $i of 4)" >&2; sleep $((i * 20)); sudo apt-get update || true; done; return 1; }
-          apt update
-          # The runner preinstalls libunwind-14-dev, which is mutually
-          # exclusive with the libunwind-dev that gstreamer's DEV packages
-          # drag in ("held broken packages", round five). The bundling
-          # plugin only COPIES runtime libraries, so dev packages aren't
-          # needed at all — install the runtime set, and drop the conflicting
-          # preinstall for good measure.
-          sudo apt-get remove -y 'libunwind-14-dev' || true
-          apt install -y \
-            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf \
-            libasound2-dev libssl-dev ninja-build vulkan-sdk libfuse2 \
-            gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
-            gstreamer1.0-plugins-bad gstreamer1.0-gl xvfb \
-            desktop-file-utils xdg-utils xdotool squashfs-tools fonts-noto-color-emoji zsync
-      - run: npm ci
-      - name: Build image engine sidecar (chaty-sd, Vulkan)
-        run: ./scripts/build-sd-sidecar.sh vulkan
-      - name: Build music engine sidecar (chaty-audio, Vulkan)
-        run: ./scripts/build-audio-sidecar.sh vulkan
-      - name: Build AppImage (Vulkan)
-        run: npm run tauri build -- --verbose --bundles appimage --config src-tauri/tauri.sd.conf.json
-        env:
-          # linuxdeploy is itself an AppImage; runners have no FUSE by
-          # default (round two of the first Linux release found this).
-          # libfuse2 above covers mounting; this covers it even without.
-          APPIMAGE_EXTRACT_AND_RUN: "1"
-          NO_STRIP: "true"
-          # sherpa-rs (voice) emits libsherpa-onnx-c-api.so & friends into
-          # target/release — the binary links fine, but linuxdeploy resolves
-          # dependencies from standard paths only and died on exactly this
-          # ('Could not find dependency', round six's verbose forensics).
-          LD_LIBRARY_PATH: ${{ github.workspace }}/src-tauri/target/release
-      - name: Use the host's libwayland-client (issue #26)
-        run: ./scripts/appimage-host-wayland.sh
-      - name: Check the AppImage starts
-        run: ./scripts/appimage-check.sh src-tauri/target/release/bundle/appimage/*.AppImage
-      - name: Forensics when linuxdeploy dies silently
-        if: failure()
-        run: |
-          set -x
-          # Re-run the REAL bundling command by hand with output visible: the
-          # AppDir tauri assembled is still on disk, and plugin-script errors
-          # (the usual killer) only show up this way.
-          APPDIR=$(ls -d src-tauri/target/release/bundle/appimage/*.AppDir 2>/dev/null | head -1) || true
-          ls -la "$APPDIR" 2>/dev/null || true
-          cd src-tauri/target/release/bundle/appimage 2>/dev/null && \
-            env APPIMAGE_EXTRACT_AND_RUN=1 NO_STRIP=true OUTPUT=forensic.AppImage \
-              PATH="$HOME/.cache/tauri:$PATH" \
-              ~/.cache/tauri/linuxdeploy-x86_64.AppImage \
-                --appdir "$(basename "$APPDIR")" \
-                --plugin gtk --plugin gstreamer --output appimage || true
-      - uses: actions/upload-artifact@v5
-        with:
-          name: linux-appimage
-          path: |
-            src-tauri/target/release/bundle/appimage/*.AppImage
-            src-tauri/target/release/bundle/appimage/*.AppImage.zsync
-          if-no-files-found: error
-
   publish:
-    needs: [build-macos, build-windows, build-linux]
+    needs: [build-windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v5
-        # The installers only: chaty-mlx's own artifact is build-macos's input.
-        with: { pattern: "{macos-dmg,windows-installer,linux-appimage,windows-portable}", merge-multiple: true, path: dist }
-      - name: Create GitHub Release with both installers
+        with: { pattern: "{windows-installer,windows-portable}", merge-multiple: true, path: dist }
+      - name: Create GitHub Release with both Windows artifacts
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
@@ -412,21 +242,6 @@ jobs:
             |---|---|
             | **Windows x64** | `Chaty_*_x64-setup.exe` — per-user installer, no admin |
             | **Windows x64 (portable)** | `Chaty_*_x64-portable.zip` — unzip anywhere and run `chaty.exe`; settings, chats and models stay in its `Data` folder |
-            | **macOS (Apple Silicon)** | `Chaty_*_aarch64.dmg` |
-            | **Linux x64 (beta)** | `Chaty_*_amd64.AppImage` — `chmod +x` and run |
-
-            ### macOS first launch — "Apple could not verify…" / "damaged"
-
-            Chaty is **ad-hoc signed but not notarized** (no paid Apple Developer
-            account), so Gatekeeper flags it on first launch. The app is safe —
-            everything runs locally. Clear the download quarantine once, in Terminal:
-
-            ```sh
-            xattr -dr com.apple.quarantine /Applications/Chaty.app
-            ```
-
-            Then open Chaty normally. (Alternatively: try to open it once, then go to
-            **System Settings → Privacy & Security → Open Anyway**.)
 
             ---
       - name: Name the build the installers are, after them
