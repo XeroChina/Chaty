@@ -1,6 +1,6 @@
 [package]
 name = "chaty"
-version = "2.4.5"
+version = "2.4.6"
 # Two binaries live here (the app + the bench/headless tool server) — `cargo
 # run`, which `tauri dev` invokes, needs to know the app is the default.
 default-run = "chaty"
@@ -167,9 +167,20 @@ windows = { version = "0.62", features = [
     "Win32_System_LibraryLoader",
     "Win32_System_Performance",
     "Win32_System_Power",
+    "Win32_System_Com",
     "Win32_UI_HiDpi",
     "Win32_UI_WindowsAndMessaging",
+    # The system's own OCR (Windows.Media.Ocr), which reads Chinese — the
+    # bundled ocrs models are Latin-only.
+    "Media_Ocr",
+    "Graphics_Imaging",
+    "Storage_Streams",
+    "Globalization",
+    "Foundation_Collections",
 ] }
+# Blocking waits for the WinRT async operations the OCR API returns. Pinned to
+# the version `windows` itself uses, so the trait applies to its types.
+windows-future = { version = "0.3.2", default-features = false, features = ["std"] }
 # A chat printed to PDF by WebView2 itself (src/pdfexport.rs): the same version
 # wry drives, so its COM types are the ones Tauri hands back.
 webview2-com = "0.39"

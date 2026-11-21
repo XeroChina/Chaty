@@ -838,7 +838,7 @@ dependencies = [
 
 [[package]]
 name = "chaty"
-version = "2.4.5"
+version = "2.4.6"
 dependencies = [
  "anyhow",
  "ash",
@@ -907,6 +907,7 @@ dependencies = [
  "webkit2gtk",
  "webview2-com",
  "windows 0.62.2",
+ "windows-future",
  "zip",
 ]
 

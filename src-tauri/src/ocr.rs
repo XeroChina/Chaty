@@ -46,8 +46,90 @@ async fn download(url: &str, to: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Read an image with the operating system's own OCR (Windows only). `None`
+/// when it is not available or fails, so the caller keeps the bundled models.
+#[cfg(windows)]
+fn system_ocr(path: &Path) -> Option<String> {
+    use windows::core::Result as WinResult;
+    use windows::Graphics::Imaging::{BitmapAlphaMode, BitmapDecoder, BitmapPixelFormat};
+    use windows::Media::Ocr::OcrEngine;
+    use windows::Storage::Streams::{DataWriter, InMemoryRandomAccessStream};
+    use windows::Win32::System::Com::{
+        CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED,
+    };
+    use windows_future::Async;
+
+    /// A recognizer for a Chinese language when the system has one, else one
+    /// for the user's own languages.
+    fn engine() -> WinResult<OcrEngine> {
+        for lang in &OcrEngine::AvailableRecognizerLanguages()? {
+            let chinese = lang
+                .LanguageTag()?
+                .to_string_lossy()
+                .to_lowercase()
+                .starts_with("zh");
+            if chinese {
+                if let Ok(found) = OcrEngine::TryCreateFromLanguage(&lang) {
+                    return Ok(found);
+                }
+            }
+        }
+        OcrEngine::TryCreateFromUserProfileLanguages()
+    }
+
+    /// WinRT activates its classes on a COM-initialized thread; a tokio worker
+    /// is not one. Already initialized (by whoever owns the thread) is fine —
+    /// and then the apartment is left as it was.
+    let initialized =
+        unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) }.ok().is_ok();
+
+    let run = || -> WinResult<String> {
+        let bytes = std::fs::read(path)?;
+        let stream = InMemoryRandomAccessStream::new()?;
+        let writer = DataWriter::CreateDataWriter(&stream)?;
+        writer.WriteBytes(&bytes)?;
+        writer.StoreAsync()?.join()?;
+        writer.FlushAsync()?.join()?;
+        drop(writer);
+        stream.Seek(0)?;
+        let decoder = BitmapDecoder::CreateAsync(&stream)?.join()?;
+        let bitmap = decoder
+            .GetSoftwareBitmapConvertedAsync(BitmapPixelFormat::Bgra8, BitmapAlphaMode::Premultiplied)?
+            .join()?;
+        Ok(engine()?.RecognizeAsync(&bitmap)?.join()?.Text()?.to_string())
+    };
+
+    let out = match run() {
+        Ok(text) if !text.trim().is_empty() => Some(text),
+        Ok(_) => None,
+        Err(e) => {
+            eprintln!("[ocr] windows ocr did not run: {e}");
+            None
+        }
+    };
+    if initialized {
+        unsafe { CoUninitialize() };
+    }
+    out
+}
+
 /// Extract Latin text from an image file. Returns empty string if no text found.
 pub async fn ocr_image(models_dir: PathBuf, image_path: String) -> Result<String> {
+    // The bundled ocrs models read Latin script only; a Chinese page through
+    // them comes back as Latin-looking gibberish. Windows' own OCR reads
+    // Chinese (and Latin), so it goes first where it exists. Any failure —
+    // no recognizer installed, an old Windows, a decode error — is not fatal:
+    // the Latin path below still runs, exactly as before.
+    #[cfg(windows)]
+    {
+        let path = Path::new(&image_path).to_path_buf();
+        if let Ok(Some(text)) = tokio::task::spawn_blocking(move || system_ocr(&path)).await {
+            if !text.trim().is_empty() {
+                return Ok(text);
+            }
+        }
+    }
+
     let (det, rec) = ensure_models(&models_dir).await?;
 
     // Model loading + inference is CPU-bound and synchronous.
