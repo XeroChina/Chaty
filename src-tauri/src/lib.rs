@@ -379,6 +379,16 @@ pub fn run() {
         "--use-fake-ui-for-media-stream --autoplay-policy=no-user-gesture-required",
     );
 
+    // A portable layout keeps every app directory under Data\ — including the
+    // WebView2 user-data folder Tauri picks for the embedded browser, which is
+    // otherwise left in %LOCALAPPDATA% (Tauri's own mechanism for this).
+    let mut context = tauri::generate_context!();
+    if let Some(root) = crate::portable::root() {
+        context.config_mut().app.app_directories_override = Some(
+            tauri::utils::config::AppDirectoriesOverride::Root(root.join("Data")),
+        );
+    }
+
     tauri::Builder::default()
         // Single instance must be registered first; focus the window on relaunch.
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
@@ -800,7 +810,7 @@ pub fn run() {
             mcp::mcp_disconnect,
             mcp::mcp_call,
         ])
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while running tauri application")
         .run(|app, event| {
             match event {
