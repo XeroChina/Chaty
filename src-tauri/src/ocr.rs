@@ -140,11 +140,18 @@ fn has_chinese_recognizer() -> bool {
     let Ok(langs) = OcrEngine::AvailableRecognizerLanguages() else {
         return false;
     };
-    langs.iter().any(|l| {
-        l.LanguageTag()
+    // The list is a WinRT vector view, not a Vec — it iterates, it has no
+    // `.iter()`.
+    for lang in &langs {
+        let chinese = lang
+            .LanguageTag()
             .map(|t| t.to_string_lossy().to_lowercase().starts_with("zh"))
-            .unwrap_or(false)
-    })
+            .unwrap_or(false);
+        if chinese {
+            return true;
+        }
+    }
+    false
 }
 
 /// What an OCR run produced, and what the user needs to know about it.
