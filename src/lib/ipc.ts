@@ -2331,6 +2331,10 @@ export interface Attachment {
   path?: string;
   /** Images embedded INSIDE the document (extracted copies) — vision models see them too. */
   images?: string[];
+  /** A note about how the text was obtained — set when the image had to go
+   *  through the Latin-only recogniser because this system has no Chinese
+   *  OCR. Empty for everything else. */
+  notice?: string | null;
 }
 
 export async function pickAttachmentFile(): Promise<string | null> {

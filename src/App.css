@@ -9723,6 +9723,13 @@ body,
 .cm-attach-doc-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cm-attach-del.inline { position: static; background: transparent; color: var(--text-dim); width: 14px; height: 14px; }
 .cm-attach-err { font-size: 12px; color: #d66; align-self: center; }
+.cm-attach-notice {
+  font-size: 12px;
+  color: var(--warn);
+  align-self: center;
+  flex-basis: 100%;
+  line-height: 1.5;
+}
 .cm-user-docs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
 
 /* Screenshot / view_image preview modal — matches .preview-overlay/.preview-modal. */

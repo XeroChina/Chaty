@@ -2696,6 +2696,10 @@ ${pdf ? ready : ""}
       setAttaching(true);
       const att = await readAttachment(path);
       setAttachment({ ...att, name: attachmentName(att.name) });
+      // The backend says when the text came from the Latin-only recogniser
+      // because this system has no Chinese OCR. The user needs that: the
+      // result is gibberish for a Chinese page, and they cannot tell why.
+      if (att.notice) showNotice("warn", att.notice);
     } catch (e) {
       setAttachment(null);
       setAttachError(typeof e === "string" ? e : t("readAttachFailed"));

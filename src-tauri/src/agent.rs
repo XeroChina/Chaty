@@ -2414,10 +2414,18 @@ pub(crate) async fn read_doc_core(
     if total < 200 && !images.is_empty() {
         if let Some(models_dir) = models_dir {
             for (i, img) in images.iter().take(4).enumerate() {
-                if let Ok(t) = crate::ocr::ocr_image(models_dir.clone(), img.clone()).await {
-                    let t = t.trim().to_string();
+                if let Ok(out) = crate::ocr::ocr_outcome(models_dir.clone(), img.clone()).await {
+                    let t = out.text.trim().to_string();
                     if !t.is_empty() {
                         ocr_note.push_str(&format!("\n--- 图片 {} OCR ---\n{t}\n", i + 1));
+                    }
+                    // The Latin-only recogniser turned a Chinese page into
+                    // noise. Say so, or the model reads the noise as content.
+                    if let Some(n) = out.notice {
+                        ocr_note.push_str(&trf!(
+                            "\n[图片 {i} OCR 提示] {n}\n",
+                            "\n[image {i} OCR note] {n}\n"
+                        ));
                     }
                 }
             }

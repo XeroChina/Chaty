@@ -19,6 +19,10 @@ pub struct Attachment {
     /// Embedded raster images extracted from the document (cached copies) —
     /// vision models see these alongside the text; empty for plain text files.
     pub images: Vec<String>,
+    /// A note about how the text was obtained — set when the image had to go
+    /// through the Latin-only recogniser because this system has no Chinese
+    /// OCR. Empty for everything else.
+    pub notice: Option<String>,
 }
 
 #[tauri::command]
@@ -35,6 +39,7 @@ pub async fn read_attachment(app: tauri::AppHandle, path: String) -> Result<Atta
         .unwrap_or("")
         .to_lowercase();
 
+    let mut notice: Option<String> = None;
     let (kind, mut text) = match ext.as_str() {
         "pdf" => {
             let path = path.clone();
@@ -49,10 +54,11 @@ pub async fn read_attachment(app: tauri::AppHandle, path: String) -> Result<Atta
         "pptx" => ("pptx".to_string(), crate::rag::extract_pptx(&path)?),
         "png" | "jpg" | "jpeg" | "webp" | "bmp" | "gif" => {
             let dir = crate::portable::data_dir(&app).join("ocr-models");
-            let text = crate::ocr::ocr_image(dir, path.clone())
+            let out = crate::ocr::ocr_outcome(dir, path.clone())
                 .await
                 .map_err(|e| trf!("OCR 失败：{e:#}", "OCR failed: {e:#}"))?;
-            ("image".to_string(), text)
+            notice = out.notice;
+            ("image".to_string(), out.text)
         }
         _ => ("text".to_string(), read_text_file(&path)?),
     };
@@ -75,6 +81,12 @@ pub async fn read_attachment(app: tauri::AppHandle, path: String) -> Result<Atta
     }
     let text = text.trim().to_string();
     if text.is_empty() && images.is_empty() {
+        // Nothing came out. If the reason is the missing Chinese OCR, say
+        // that instead of the bare "no text" — otherwise the user is left
+        // guessing why a clear Chinese screenshot read as nothing at all.
+        if let Some(n) = &notice {
+            return Err(n.clone());
+        }
         return Err(trf!("没有从文件中解析到文本内容", "no text could be read from the file"));
     }
 
@@ -85,6 +97,7 @@ pub async fn read_attachment(app: tauri::AppHandle, path: String) -> Result<Atta
         truncated,
         text,
         images,
+        notice,
     })
 }
 

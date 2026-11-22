@@ -5569,7 +5569,10 @@ export async function runAgentTurn(
             stepObj.status = "done";
             stepObj.result =
               (lang === "zh" ? `已对图片做 OCR (${rel}):\n` : `OCR of ${rel}:\n`) +
-              (text || (lang === "zh" ? "(未识别到文字)" : "(no text found)"));
+              (text || (lang === "zh" ? "(未识别到文字)" : "(no text found)")) +
+              // The Latin-only recogniser read a Chinese page as gibberish —
+              // say why, so the model does not treat the noise as content.
+              (att.notice ? `\n[${att.notice}]` : "");
             stepObj.image = abs;
             cb.onStep(stepObj);
             pushUser(

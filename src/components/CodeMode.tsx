@@ -1143,6 +1143,9 @@ export function CodeMode({
   /** Other sessions the user referenced with @ for the next turn. */
   const [refSessions, setRefSessions] = useState<{ id: string; title: string }[]>([]);
   const [attachErr, setAttachErr] = useState("");
+  /** A note about the last attachment (e.g. the image was read by the
+   *  Latin-only recogniser because this system has no Chinese OCR). */
+  const [attachNotice, setAttachNotice] = useState("");
   // Full-size image preview (screenshot / view_image steps).
   const [previewImg, setPreviewImg] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
@@ -2388,6 +2391,7 @@ export function CodeMode({
   /** A file picked, dropped on the window or pasted into the input. */
   async function attachCodePath(path: string) {
     setAttachErr("");
+    setAttachNotice("");
     try {
       if (model?.visionReady && isVisionImagePath(path)) {
         setCodeAttachments((cur) => [
@@ -2398,6 +2402,10 @@ export function CodeMode({
         // Documents (extracted) and non-vision images (OCR) both go here.
         const att = await readAttachment(path);
         setCodeAttachments((cur) => [...cur, { ...att, name: attachmentName(att.name), path }]);
+        // The backend says when the text came from the Latin-only recogniser
+        // because this system has no Chinese OCR — the text is gibberish for
+        // a Chinese page, and the user cannot tell why from the result.
+        if (att.notice) setAttachNotice(att.notice);
       }
     } catch (e) {
       setAttachErr(typeof e === "string" ? e : t("readAttachFailed"));
@@ -3603,7 +3611,7 @@ export function CodeMode({
               ))}
             </div>
           )}
-          {(codeAttachments.length > 0 || refSessions.length > 0 || attachErr) && (
+          {(codeAttachments.length > 0 || refSessions.length > 0 || attachErr || attachNotice) && (
             <div className="cm-attach-row">
               {refSessions.map((r) => (
                 <span key={r.id} className="cm-attach-doc" title={`${t("cmRefSession")}: ${r.title}`}>
@@ -3645,6 +3653,7 @@ export function CodeMode({
                 ),
               )}
               {attachErr && <span className="cm-attach-err">{attachErr}</span>}
+              {attachNotice && <span className="cm-attach-notice">{attachNotice}</span>}
             </div>
           )}
           {/* Sending waits on a run elsewhere: a tab on the box's top edge

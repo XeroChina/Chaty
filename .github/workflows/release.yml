@@ -228,6 +228,15 @@ jobs:
             OCR (`Windows.Media.Ocr`) now goes first and reads Chinese, falling back to the bundled
             models where the system has no Chinese recognizer.
 
+            ## When the picture comes back as gibberish, it says why
+
+            The bundled ocrs models read Latin script only. On a system without a Chinese OCR
+            recognizer, a Chinese screenshot came back as Latin-looking noise with no explanation,
+            and the user was left guessing at a wall of garbage. Chaty now says it plainly — the
+            notice names the missing Chinese OCR component and where to install it. A picture the
+            system's own OCR can read is unaffected: the notice appears only when the text really
+            did come from the Latin-only fallback.
+
             ## Under the hood
 
             Tauri moved from 2.11 to 2.12, and the `windows` and `webview2-com` dependencies were
