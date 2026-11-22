@@ -57,7 +57,6 @@ fn system_ocr(path: &Path) -> Option<String> {
     use windows::Win32::System::Com::{
         CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED,
     };
-    use windows_future::Async;
 
     /// A recognizer for a Chinese language when the system has one, else one
     /// for the user's own languages.
@@ -77,9 +76,9 @@ fn system_ocr(path: &Path) -> Option<String> {
         OcrEngine::TryCreateFromUserProfileLanguages()
     }
 
-    /// WinRT activates its classes on a COM-initialized thread; a tokio worker
-    /// is not one. Already initialized (by whoever owns the thread) is fine —
-    /// and then the apartment is left as it was.
+    // WinRT activates its classes on a COM-initialized thread; a tokio worker
+    // is not one. Already initialized (by whoever owns the thread) is fine —
+    // and then the apartment is left as it was.
     let initialized =
         unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) }.ok().is_ok();
 
